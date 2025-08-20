@@ -1,0 +1,82 @@
+<div class="app">
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <div class="branding">
+        <span class="logo">🍔</span>
+        <h1>BurgerClicker</h1>
+      </div>
+      @if (!this.mobile) {
+        <div class="controls">
+          <input placeholder="Tu nombre" [(ngModel)]="name" aria-label="Nombre del jugador" />
+          <button class="btn dark" (click)="resetRun()">Reiniciar</button>
+        </div>
+      }
+    </header>
+
+    <div class="layout">
+      <!-- Panel de juego -->
+      @if (this.mobile) {
+        <div class="controls">
+          <input placeholder="Tu nombre" [(ngModel)]="name" aria-label="Nombre del jugador" />
+          <button class="btn dark" (click)="resetRun()">Reiniciar</button>
+        </div>
+      }
+      <section class="panel">
+        <div class="game">
+          <button #burgerBtn class="burger" (click)="onClick($event)" aria-label="Sumar hamburguesa">
+            <canvas style="height: 250px; width: 250px" id="burger_canvas"></canvas>
+            <span class="badge">CPS: {{ cps.toFixed(2) }}</span>
+          </button>
+
+          <div class="stats">
+            <div class="stat">
+              <div class="label">Clicks</div>
+              <div class="value">{{ fmt(bestScore) }}</div>
+            </div>
+          </div>
+
+          @if (message) {
+            <div class="msg">{{ message }}</div>
+          }
+        </div>
+
+        <!-- Pops flotantes -->
+        @for (p of pops; track $index) {
+          <span class="pop" [style.left.px]="p.x" [style.top.px]="p.y">
+            {{ p.value }}
+          </span>
+        }
+      </section>
+
+      <!-- Scoreboard -->
+      <aside class="scoreboard">
+        <h2>Scoreboard</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Jugador</th>
+              <th class="right">Puntaje</th>
+            </tr>
+          </thead>
+          <tbody>
+            @if (scores.length === 0) {
+              <tr>
+                <td colspan="4" class="empty">No hay puntajes aún. ¡Sé el primero!</td>
+              </tr>
+            } @else {
+              @for (row of scores; track row.id; let idx = $index) {
+                <tr style="text-align: center;">
+                  <td class="muted">{{ idx + 1 }}</td>
+                  <td class="truncate" [title]="row.name">{{ row.name }}</td>
+                  <td class="right">{{ fmt(row.score) }}</td>
+                </tr>
+              }
+            }
+          </tbody>
+        </table>
+      </aside>
+    </div>
+  </div>
+</div>
