@@ -10,4 +10,8 @@
   <body>
     <my-app></my-app>
   </body>
+  <script src="/runtime-config/config.js"></script>
+  <script>
+    window.APP_CFG = window.__APP_CONFIG__ || { apiBaseUrl: '/api', wsUrl: ((location.protocol==='https:')?'wss://':'ws://') + location.host + '/ws' };
+  </script>
 </html>
