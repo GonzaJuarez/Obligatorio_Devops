@@ -10,14 +10,16 @@ export class WebsocketService {
   private socket?: WebSocket;
   private msg$ = new Subject<WSMessage>();
   private connected$ = new Subject<boolean>();
+
   private url = this.makeUrl('/ws');
+
   private shouldReconnect = true;
 
   constructor(private zone: NgZone) {
     this.connect();
   }
 
- private makeUrl(path: string) {
+  private makeUrl(path: string) {
     const w = window as any;
 
     const cfgUrl = w?.APP_CFG?.wsUrl as string | undefined;
@@ -43,8 +45,7 @@ export class WebsocketService {
 
       this.socket.onclose = () => {
         this.zone.run(() => this.connected$.next(false));
-        // backoff simple (0.5s → 5s)
-        if (this.shouldReconnect) this.connect(1000);
+        if (this.shouldReconnect) this.connect(1000); // backoff simple
       };
 
       this.socket.onerror = () => {
