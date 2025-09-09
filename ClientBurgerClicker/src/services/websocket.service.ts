@@ -17,10 +17,15 @@ export class WebsocketService {
     this.connect();
   }
 
-  private makeUrl(path: string) {
+ private makeUrl(path: string) {
+    const w = window as any;
+
+    const cfgUrl = w?.APP_CFG?.wsUrl as string | undefined;
+    if (cfgUrl) return cfgUrl;
+
     const loc = window.location;
     const protocol = loc.protocol === 'https:' ? 'wss:' : 'ws:';
-    return `${protocol}//10.4.96.244:8000${path}`;
+    return `${protocol}//${loc.host}${path}`;
   }
 
   private connect(delayMs = 0) {
