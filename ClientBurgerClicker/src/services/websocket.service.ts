@@ -20,7 +20,6 @@ export class WebsocketService {
   private makeUrl(path: string) {
     const loc = window.location;
     const protocol = loc.protocol === 'https:' ? 'wss:' : 'ws:';
-    // si el backend está en otro host/puerto, reemplazá acá
     return `${protocol}//10.4.96.244:8000${path}`;
   }
 
