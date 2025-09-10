@@ -10,7 +10,9 @@ export class WebsocketService {
   private socket?: WebSocket;
   private msg$ = new Subject<WSMessage>();
   private connected$ = new Subject<boolean>();
+
   private url = this.makeUrl('/ws');
+
   private shouldReconnect = true;
 
   constructor(private zone: NgZone) {
@@ -18,10 +20,14 @@ export class WebsocketService {
   }
 
   private makeUrl(path: string) {
+    const w = window as any;
+
+    const cfgUrl = w?.APP_CFG?.wsUrl as string | undefined;
+    if (cfgUrl) return cfgUrl;
+
     const loc = window.location;
     const protocol = loc.protocol === 'https:' ? 'wss:' : 'ws:';
-    // si el backend está en otro host/puerto, reemplazá acá
-    return `${protocol}//10.4.96.244:8000${path}`;
+    return `${protocol}//${loc.host}${path}`;
   }
 
   private connect(delayMs = 0) {
@@ -39,8 +45,7 @@ export class WebsocketService {
 
       this.socket.onclose = () => {
         this.zone.run(() => this.connected$.next(false));
-        // backoff simple (0.5s → 5s)
-        if (this.shouldReconnect) this.connect(1000);
+        if (this.shouldReconnect) this.connect(1000); // backoff simple
       };
 
       this.socket.onerror = () => {
