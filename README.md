@@ -4,8 +4,7 @@ Este proyecto despliega el juego **BurgerClicker** en **minikube** con:
 
 - Un **backend** (FastAPI).
 - Un **frontend** con estrategia **blue/green** (`v1` y `v2`).
-- Nginx en el frontend que:
-  - Sirve los archivos estáticos.
+- Nginx en el frontend que sirve los archivos estáticos.
 ---
 
 ## 1. Prerrequisitos
