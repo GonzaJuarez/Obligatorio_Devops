@@ -1,0 +1,189 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: burgerclicker
+---
+# === CONFIG del FRONT
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frontend-config
+  namespace: burgerclicker
+data:
+  config.js: |
+    window.APP_CFG = {
+      apiBaseUrl: "/api",
+      wsUrl: (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws"
+    };
+---
+# === NGINX CONF
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-proxy-conf
+  namespace: burgerclicker
+data:
+  default.conf: |
+    server {
+      listen 80;
+      server_name _;
+
+      root /usr/share/nginx/html;
+      index index.html;
+
+      location / {
+        try_files $uri $uri/ /index.html;
+      }
+
+      location /runtime-config/ {
+        try_files $uri =404;
+      }
+
+      location ~ ^/api/?(.*)$ {
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_pass http://backend-svc.burgerclicker.svc.cluster.local:8000/$1;
+      }
+
+      location /ws {
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "Upgrade";
+        proxy_set_header Host $host;
+        proxy_pass http://backend-svc.burgerclicker.svc.cluster.local:8000;
+      }
+    }
+---
+# === BACKEND
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: burgerclicker
+  labels: { app: backend }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: backend }
+  template:
+    metadata:
+      labels: { app: backend }
+    spec:
+      containers:
+        - name: backend
+          image: matyrela/backendburger:v1
+          ports:
+            - containerPort: 8000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-svc
+  namespace: burgerclicker
+spec:
+  selector:
+    app: backend
+  ports:
+    - port: 8000
+      targetPort: 8000
+---
+# === FRONTEND BLUE
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-blue
+  namespace: burgerclicker
+  labels: { app: frontend, color: blue }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: frontend, color: blue }
+  template:
+    metadata:
+      labels: { app: frontend, color: blue }
+    spec:
+      containers:
+        - name: nginx
+          image: matyrela/clientburger:v1
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: runtime-config
+              mountPath: /usr/share/nginx/html/runtime-config
+            - name: nginx-proxy
+              mountPath: /etc/nginx/conf.d/default.conf
+              subPath: default.conf
+      volumes:
+        - name: runtime-config
+          configMap:
+            name: frontend-config
+            items:
+              - key: config.js
+                path: config.js
+        - name: nginx-proxy
+          configMap:
+            name: nginx-proxy-conf
+            items:
+              - key: default.conf
+                path: default.conf
+---
+# === FRONTEND GREEN
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-green
+  namespace: burgerclicker
+  labels: { app: frontend, color: green }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: frontend, color: green }
+  template:
+    metadata:
+      labels: { app: frontend, color: green }
+    spec:
+      containers:
+        - name: nginx
+          image: matyrela/clientburger:v2
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: runtime-config
+              mountPath: /usr/share/nginx/html/runtime-config
+            - name: nginx-proxy
+              mountPath: /etc/nginx/conf.d/default.conf
+              subPath: default.conf
+      volumes:
+        - name: runtime-config
+          configMap:
+            name: frontend-config
+            items:
+              - key: config.js
+                path: config.js
+        - name: nginx-proxy
+          configMap:
+            name: nginx-proxy-conf
+            items:
+              - key: default.conf
+                path: default.conf
+---
+# === SERVICE del FRONTEND
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-svc
+  namespace: burgerclicker
+spec:
+  type: NodePort
+  selector:
+    app: frontend
+    color: blue
+  ports:
+    - port: 80
+      targetPort: 80
+      nodePort: 30080
+
