@@ -1,22 +1,26 @@
-import { Injectable, NgZone } from '@angular/core';
+import { afterNextRender, inject, Injectable, NgZone } from '@angular/core';
 import { Observable, Subject, timer } from 'rxjs';
 
-type WSMessage =
-  | { type: 'scores'; scores: Record<string, number> }
-  | { type: 'click'; name: string; total: number };
+type WSMessage = { type: 'scores'; scores: Record<string, number> } | { type: 'click'; name: string; total: number };
 
 @Injectable({ providedIn: 'root' })
 export class WebsocketService {
+
+  public wsConnected: 'connecting' | 'connected' | 'fail' = 'fail';
+
   private socket?: WebSocket;
-  private msg$ = new Subject<WSMessage>();
-  private connected$ = new Subject<boolean>();
+  private readonly msg$ = new Subject<WSMessage>();
+  private readonly connected$ = new Subject<boolean>();
 
-  private url = this.makeUrl('/ws');
+  private readonly url = this.makeUrl('/ws');
 
-  private shouldReconnect = true;
+  private shouldReconnect = false;
+  private readonly zone = inject(NgZone);
 
-  constructor(private zone: NgZone) {
-    this.connect();
+  constructor() {
+    afterNextRender(() => {
+      this.connect();
+    });
   }
 
   private makeUrl(path: string) {
@@ -30,11 +34,23 @@ export class WebsocketService {
     return `${protocol}//${loc.host}${path}`;
   }
 
-  private connect(delayMs = 0) {
+  public connect(delayMs = 0) {
     timer(delayMs).subscribe(() => {
+      this.wsConnected = 'connecting';
       this.socket = new WebSocket(this.url);
 
-      this.socket.onopen = () => this.zone.run(() => this.connected$.next(true));
+      let timeout = setTimeout(() => {
+        if (this.wsConnected === 'connecting') {
+          this.wsConnected = 'fail';
+          try { this.socket?.close(); } catch {}
+        }
+      }, 5000);
+
+      this.socket.onopen = () => {
+        clearTimeout(timeout);
+        this.wsConnected = 'connected';
+        this.zone.run(() => this.connected$.next(true));
+      };
 
       this.socket.onmessage = (ev) => {
         try {
@@ -44,12 +60,18 @@ export class WebsocketService {
       };
 
       this.socket.onclose = () => {
+        clearTimeout(timeout);
+        this.wsConnected = 'fail';
         this.zone.run(() => this.connected$.next(false));
-        if (this.shouldReconnect) this.connect(1000); // backoff simple
+        if (this.shouldReconnect) this.connect(5000);
       };
 
       this.socket.onerror = () => {
-        try { this.socket?.close(); } catch {}
+        clearTimeout(timeout);
+        this.wsConnected = 'fail';
+        try {
+          this.socket?.close();
+        } catch {}
       };
     });
   }

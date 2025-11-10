@@ -1,8 +1,7 @@
-import { Component, ElementRef, HostListener, ViewChild } from '@angular/core';
+import { Component, ElementRef, HostListener, inject, OnInit, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { PopFx } from '../models/popfx';
 import { ScoreRow } from '../models/scorerow';
-import { ScoreService } from '../services/score.service';
 
 import {
   AxesHelper,
@@ -15,7 +14,7 @@ import {
   PerspectiveCamera,
   Scene,
   SRGBColorSpace,
-  WebGLRenderer
+  WebGLRenderer,
 } from 'three';
 
 import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
@@ -23,7 +22,7 @@ import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 import { WebsocketService } from '../services/websocket.service';
 
 type WsMsgScores = { type: 'scores'; scores: Record<string, number> };
-type WsMsgClick  = { type: 'click'; name: string; total: number };
+type WsMsgClick = { type: 'click'; name: string; total: number };
 type WsMsg = WsMsgScores | WsMsgClick;
 
 @Component({
@@ -32,17 +31,16 @@ type WsMsg = WsMsgScores | WsMsgClick;
   templateUrl: './app.component.html',
   styleUrls: ['./app.component.css'],
 })
-export class AppComponent {
+export class AppComponent implements OnInit {
   @ViewChild('burgerBtn') burgerBtn?: ElementRef<HTMLButtonElement>;
+
+  firstTime = false;
 
   // Estado de juego
   name = '';
   bestScore = 0;
 
-  mobile = false;
-
   // UI/FX
-  message = '';
   submitting = false;
   loadingScores = false;
   pops: PopFx[] = [];
@@ -55,12 +53,7 @@ export class AppComponent {
   private clickTimestamps: number[] = [];
   private readonly horizonMs = 2000; // 2s
 
-  private wsConnected = false;
-
-  constructor(
-    private readonly api: ScoreService,
-    private readonly ws: WebsocketService
-  ) {}
+  public readonly ws = inject(WebsocketService)
 
   ngOnInit(): void {
     // Estado local
@@ -70,6 +63,8 @@ export class AppComponent {
         const s = JSON.parse(raw);
         this.name = s.name ?? '';
         this.bestScore = s.bestScore ?? 0;
+      } else {
+        this.firstTime = true;
       }
     } catch {}
     setInterval(() => this.pruneTimestamps(), 500);
@@ -89,8 +84,6 @@ export class AppComponent {
 
     // Tamaño correcto (y resize)
     const setSize = () => {
-      this.mobile = window.innerWidth < 700;
-
       const w = canvas.clientWidth || 300;
       const h = canvas.clientHeight || 300;
       if (canvas.width !== w || canvas.height !== h) {
@@ -118,7 +111,7 @@ export class AppComponent {
 
     // ====== OBJ + MTL ======
     const ASSETS_PATH = '/assets/models/'; // <-- ajustá si usás otra carpeta
-    const SHOW_DEBUG_HELPERS = false;      // poné true para ver ejes y grilla
+    const SHOW_DEBUG_HELPERS = false; // poné true para ver ejes y grilla
 
     if (SHOW_DEBUG_HELPERS) {
       scene.add(new AxesHelper(2));
@@ -207,14 +200,14 @@ export class AppComponent {
             (err) => {
               console.error('Error al cargar OBJ (con MTL):', err);
               fallbackLoadObj(scene, camera, renderer, setSize);
-            }
+            },
           );
         },
         onProgress,
         (err) => {
           console.error('Error al cargar MTL:', err);
           fallbackLoadObj(scene, camera, renderer, setSize);
-        }
+        },
       );
     };
 
@@ -222,7 +215,7 @@ export class AppComponent {
       scene: Scene,
       camera: PerspectiveCamera,
       renderer: WebGLRenderer,
-      setSizeFn: () => void
+      setSizeFn: () => void,
     ) => {
       const objLoader = new OBJLoader();
       objLoader.setPath(ASSETS_PATH);
@@ -248,17 +241,12 @@ export class AppComponent {
           animate();
         },
         onProgress,
-        (e) => console.error('[Fallback] Tampoco pude cargar el OBJ', e)
+        (e) => console.error('[Fallback] Tampoco pude cargar el OBJ', e),
       );
     };
 
     loadWithMaterials();
     // ====== /OBJ + MTL ======
-
-     this.ws.connection().subscribe(ok => {
-      this.wsConnected = ok;
-      if (!ok) this.message = 'Reconectando al servidor...';
-    });
 
     this.ws.messages().subscribe((msg: WsMsg) => {
       if (msg.type === 'scores') {
@@ -318,7 +306,6 @@ export class AppComponent {
 
   resetRun() {
     this.clickTimestamps = [];
-    this.message = '';
   }
 
   // ===== Utilidades =====
@@ -347,12 +334,21 @@ export class AppComponent {
     return iso ? new Date(iso).toLocaleString() : '—';
   }
 
-  private persist() {
+  persist() {
+    if (!this.name) return;
+    if (this.firstTime) {
+      this.firstTime = false;
+    }
+
     try {
-      localStorage.setItem(
-        'burger_clicker_state',
-        JSON.stringify({ name: this.name, bestScore: this.bestScore })
-      );
+      localStorage.setItem('burger_clicker_state', JSON.stringify({ name: this.name, bestScore: this.bestScore }));
     } catch {}
+  }
+
+  logout() {
+    try {
+      localStorage.removeItem('burger_clicker_state');
+    } catch {}
+    window.location.reload();
   }
 }
