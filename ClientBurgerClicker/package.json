@@ -1,6 +1,6 @@
 {
-  "name": "ngt-template",
-  "version": "0.0.0",
+  "name": "burger-clicker",
+  "version": "1.0.0",
   "scripts": {
     "ng": "ng",
     "start": "ng serve",

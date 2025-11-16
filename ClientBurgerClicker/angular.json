@@ -3,7 +3,7 @@
   "version": 1,
   "newProjectRoot": "projects",
   "projects": {
-    "ngt-template": {
+    "burger-clicker": {
       "projectType": "application",
       "schematics": {
         "@schematics/angular:component": {
@@ -40,7 +40,7 @@
         "build": {
           "builder": "@angular/build:application",
           "options": {
-            "outputPath": "dist/ngt-template",
+            "outputPath": "dist/burger-clicker",
             "index": "src/index.html",
             "browser": "src/main.ts",
             "polyfills": ["zone.js"],
@@ -85,10 +85,10 @@
           "builder": "@angular/build:dev-server",
           "configurations": {
             "production": {
-              "buildTarget": "ngt-template:build:production"
+              "buildTarget": "burger-clicker:build:production"
             },
             "development": {
-              "buildTarget": "ngt-template:build:development"
+              "buildTarget": "burger-clicker:build:development"
             }
           },
           "defaultConfiguration": "development"

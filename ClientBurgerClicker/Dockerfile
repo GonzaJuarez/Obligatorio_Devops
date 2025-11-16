@@ -1,16 +1,17 @@
+# ===== STAGE 1: build =====
+FROM node:18-alpine AS build
+WORKDIR /app
 
-FROM node:18 as build
-WORKDIR /src
 COPY package*.json ./
 RUN npm ci
+
 COPY . .
-RUN npm run build -- --configuration=production
+RUN npm run build --configuration=production
 
-FROM nginx:alpine
-COPY ./nginx/default.conf /etc/nginx/conf.d/default.conf
+# ===== STAGE 2: nginx =====
+FROM ghcr.io/11notes/nginx:1.28.0
 
-COPY --from=build /src/dist /usr/share/nginx/html
+COPY ./nginx/default.conf /nginx/etc/default.conf
+COPY --from=build /app/dist/burger-clicker/browser/ /nginx/var/
 
-RUN mkdir -p /usr/share/nginx/html/runtime-config
-RUN mv /usr/share/nginx/html/ngt-template/browser/* /usr/share/nginx/html
-EXPOSE 80
+EXPOSE 8080
