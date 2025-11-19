@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frontend-config
+data:
+  config.js: |
+    window.APP_CFG = {
+      apiBaseUrl: "{{ .Values.config.apiBasePath }}",
+      wsUrl: (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws"
+    };

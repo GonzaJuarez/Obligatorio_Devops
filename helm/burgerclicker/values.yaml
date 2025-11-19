@@ -1,0 +1,32 @@
+frontend:
+  replicaCount: 1
+  image: registry.konoba.space/burger-front:v2
+  imagePullPolicy: Always
+  service:
+    type: NodePort
+    port: 80
+    nodePort: 30080
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+backend:
+  replicaCount: 1
+  image: registry.konoba.space/burger-back:v2
+  imagePullPolicy: Always
+  service:
+    port: 8000
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+config:
+  apiBasePath: "/api"
