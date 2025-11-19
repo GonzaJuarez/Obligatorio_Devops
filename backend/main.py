@@ -3,6 +3,7 @@ from fastapi.websockets import WebSocketDisconnect
 from typing import Dict, List
 import json
 import os
+import re
 
 app = FastAPI()
 
@@ -17,7 +18,12 @@ def load_data() -> Dict[str, int]:
             content = f.read()
             if not content.strip():
                 return {}
-            return json.loads(content)
+            data = json.loads(content)
+            if not isinstance(data, dict):
+                return {}
+            if not all(isinstance(k, str) and isinstance(v, int) for k, v in data.items()):
+                return {}
+            return data
     except json.JSONDecodeError:
         return {}
 
@@ -30,9 +36,15 @@ class ConnectionManager:
     def __init__(self):
         self.active_connections: List[WebSocket] = []
 
-    async def connect(self, websocket: WebSocket):
+    async def connect(self, websocket: WebSocket, origin: str = None):
+        allowed_origins = os.getenv('ALLOWED_ORIGINS', 'http://localhost:4200,http://localhost:3000').split(',')
+        if origin and origin not in allowed_origins:
+            await websocket.close(code=1008, reason="Origin not allowed")
+            return False
+        
         await websocket.accept()
         self.active_connections.append(websocket)
+        return True
 
     def disconnect(self, websocket: WebSocket):
         if websocket in self.active_connections:
@@ -60,9 +72,12 @@ def msg_click(name: str, total: int) -> str:
 # ---------- WebSocket ----------
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    await manager.connect(websocket)
+    origin = websocket.headers.get('origin')
+    connected = await manager.connect(websocket, origin)
+    if not connected:
+        return
+    
     try:
-        # (1) Al conectarse, devolver scoreboard completo
         scores = load_data()
         await websocket.send_text(msg_scores(scores))
 
@@ -73,28 +88,29 @@ async def websocket_endpoint(websocket: WebSocket):
             except json.JSONDecodeError:
                 continue
 
-            # Esperamos { "type": "click", "name": "Player" }
+            if not isinstance(data, dict) or 'type' not in data:
+                continue
+
             if data.get("type") == "click":
                 name = (data.get("name") or "").strip()
-                if not name:
+                
+                if not name or len(name) > 50:
+                    continue
+                if not re.match(r'^[a-zA-Z0-9\s\-_]+$', name):
                     continue
 
-                # (2) Sumar SIEMPRE 1 por click
                 scores = load_data()
                 total = scores.get(name, 0) + 1
                 scores[name] = total
                 save_data(scores)
 
-                # (3) Difundir a todos: el click puntual y el scoreboard actualizado
                 await manager.broadcast_text(msg_click(name, total))
                 await manager.broadcast_text(msg_scores(scores))
 
-            # Si en el futuro querés más tipos, podés agregarlos acá
 
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 
-# ---------- Endpoint utilitario para testing ----------
 @app.post("/reset")
 async def reset_scores():
     save_data({})
