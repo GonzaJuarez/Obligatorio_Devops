@@ -26,5 +26,8 @@ spec:
             - containerPort: 8000
           securityContext:
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}

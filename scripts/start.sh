@@ -9,7 +9,10 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CHART_DIR="${ROOT_DIR}/helm/burgerclicker"
 JENKINS_MANIFEST="${ROOT_DIR}/k8s/deploy-jenkins.yaml"
 KYVERNO_POLICIES_DIR="${ROOT_DIR}/k8s/kyverno/"
+PROMETHEUS_MANIFEST="${ROOT_DIR}/k8s/monitoring/prometheus.yaml"
+GRAFANA_MANIFEST="${ROOT_DIR}/k8s/monitoring/grafana.yaml"
 
+NAMESPACE_MONITORING="monitoring"
 NAMESPACE_APP="burgerclicker"
 NAMESPACE_JENKINS="jenkins"
 NAMESPACE_KYVERNO="kyverno"
@@ -77,6 +80,24 @@ kubectl wait --for=condition=Available deployment/jenkins -n "${NAMESPACE_JENKIN
 
 echo "Jenkins desplegado en el namespace '${NAMESPACE_JENKINS}'."
 
+### DESPLEGAR GRAFANA #######################################################
+
+if [ ! -f "$PROMETHEUS_MANIFEST" ]; then
+  echo "ERROR: no se encontró el manifest de Prometheus en: $PROMETHEUS_MANIFEST" >&2
+  exit 1
+fi
+
+if [ ! -f "$GRAFANA_MANIFEST" ]; then
+  echo "ERROR: no se encontró el manifest de Grafana en: $GRAFANA_MANIFEST" >&2
+  exit 1
+fi
+
+kubectl apply -f "$PROMETHEUS_MANIFEST"
+kubectl apply -f "$GRAFANA_MANIFEST"
+
+kubectl wait --for=condition=Available deployment/prometheus -n "${NAMESPACE_MONITORING}" --timeout=300s || true
+kubectl wait --for=condition=Available deployment/grafana    -n "${NAMESPACE_MONITORING}" --timeout=300s || true
+
 ### RESUMEN ################################################################
 
 echo --------------------------------------------------------
@@ -96,3 +117,6 @@ echo "    minikube service frontend-svc -n ${NAMESPACE_APP} --url -p ${MINIKUBE_
 echo
 echo "- Para acceder a JENKINS:"
 echo "    minikube service jenkins-svc -n ${NAMESPACE_JENKINS} --url -p ${MINIKUBE_PROFILE}"
+echo
+echo "- Para acceder a GRAFANA:"
+echo "    minikube service grafana -n ${NAMESPACE_MONITORING} --url -p ${MINIKUBE_PROFILE}"

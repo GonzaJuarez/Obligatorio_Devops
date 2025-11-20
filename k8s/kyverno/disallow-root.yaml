@@ -1,0 +1,32 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-root-user
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: validate-non-root
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+                - Deployment
+                - StatefulSet
+                - DaemonSet
+                - Job
+                - CronJob
+      validate:
+        message: "Los contenedores deben correr como non-root (runAsNonRoot: true y UID > 0)."
+        pattern:
+          spec:
+            =(template):
+              spec:
+                securityContext:
+                  runAsNonRoot: true
+                  runAsUser: ">0"
+                containers:
+                  - securityContext:
+                      runAsNonRoot: true
+                      runAsUser: ">0"

@@ -26,6 +26,9 @@ spec:
             - containerPort: 80
           securityContext:
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
           volumeMounts:
             - name: runtime-config
               mountPath: /usr/share/nginx/html/runtime-config
