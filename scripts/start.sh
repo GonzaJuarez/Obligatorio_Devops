@@ -49,7 +49,9 @@ if ! kubectl get ns "${NAMESPACE_KYVERNO}" >/dev/null 2>&1; then
   kubectl create namespace "${NAMESPACE_KYVERNO}"
   helm repo add kyverno https://kyverno.github.io/kyverno/
   helm repo update
+  echo "Instalando Kyverno con Helm..."
   helm install kyverno kyverno/kyverno -n "${NAMESPACE_KYVERNO}" --create-namespace
+  echo "Kyverno instalado en el namespace '${NAMESPACE_KYVERNO}'."
 fi
 
 kubectl wait --for=condition=Available deployment/kyverno-admission-controller -n "${NAMESPACE_KYVERNO}" --timeout=300s || true
@@ -63,9 +65,35 @@ fi
 
 kubectl apply -f "${KYVERNO_POLICIES_DIR}"
 
+echo "Políticas de Kyverno desplegadas."
+
 ### DESPLEGAR APLICACIÓN ####################################################
 
-helm install burgerclicker "$CHART_DIR" -n "${NAMESPACE_APP}" --wait --timeout 300s --create-namespace
+echo "Desplegando BurgerClicker con Helm..."
+
+if ! helm install burgerclicker "$CHART_DIR" \
+  -n "${NAMESPACE_APP}" \
+  --wait \
+  --timeout 300s \
+  --create-namespace; then
+
+  echo
+  echo "❌ Error desplegando burgerclicker (Helm falló)."
+
+  echo
+  echo "=== Pods en namespace ${NAMESPACE_APP} ==="
+  kubectl get pods -n "${NAMESPACE_APP}" || true
+
+  echo
+  echo "=== Eventos recientes en ${NAMESPACE_APP} ==="
+  kubectl get events -n "${NAMESPACE_APP}" --sort-by=.lastTimestamp | tail -n 20 || true
+
+  echo
+  echo "=== Logs del frontend (si existe) ==="
+  kubectl logs -n "${NAMESPACE_APP}" deploy/frontend || true
+
+  exit 1
+fi
 
 kubectl wait --for=condition=Available deployment/frontend -n "${NAMESPACE_APP}" --timeout=120s || true
 kubectl wait --for=condition=Available deployment/backend  -n "${NAMESPACE_APP}" --timeout=120s || true
