@@ -172,6 +172,35 @@ Políticas aplicadas:
 - Kyverno actúa como admission controller, validando y rechazando recursos que incumplan.
 - Las políticas en modo `Enforce` bloquean el despliegue; en modo `Audit` solo registran violaciones.
 
+### 6.5 Dive
+Dive se utilizó para analizar la eficiencia de las imágenes Docker generadas para el backend y el frontend.
+El objetivo del análisis es identificar:
+- Espacio desperdiciado en las capas.
+- Archivos redundantes o ineficientes.
+- Buena utilización de multi-stage builds.
+- Capas con mayor peso dentro de la imagen.
+- Oportunidades de optimización relacionadas con dependencias, archivos temporales y estructura final de la imagen.
+
+Reporte generado en `/reports/image-analysis.md`
+
+Comandos ejecutados:
+- Fontend:
+  ```bash
+  docker run --rm \
+  -e CI=true \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  docker.io/wagoodman/dive:latest \
+  "${FRONT_IMAGE}"
+
+  ```
+- Backend:
+  ```bash
+  docker run --rm \
+  -e CI=true \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  docker.io/wagoodman/dive:latest \
+  "${BACK_IMAGE}"
+  ```
 ---
 
 ## 7. Monitoreo y Observabilidad  
