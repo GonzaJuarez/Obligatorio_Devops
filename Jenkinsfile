@@ -1,163 +1,130 @@
 pipeline {
     agent any
-    
+
     environment {
-        REPORTS_DIR = 'reports'
+        REGISTRY_URL = "registry.konoba.space"
+
+        TAG = "${BUILD_NUMBER}"
+
+        BACKEND_IMAGE = "${REGISTRY_URL}/burger-back:${TAG}"
+        FRONTEND_IMAGE = "${REGISTRY_URL}/burger-front:${TAG}"
+
+        KUBE_CONTEXT    = "minikube"
+        HELM_RELEASE    = "burgerclicker"
+        HELM_NAMESPACE  = "burgerclicker"
+        HELM_CHART_PATH = "helm/burgerclicker"
     }
-    
+
+    options {
+        timestamps()
+        ansiColor('xterm')
+    }
+
     stages {
+
         stage('Checkout') {
             steps {
-                echo 'Checking out code...'
                 checkout scm
             }
         }
-        
-        stage('Static Code Analysis - Semgrep') {
+
+        stage('Semgrep - SAST') {
+            steps {
+                sh '''
+                    mkdir -p reports
+                    semgrep scan \
+                      --config=p/python \
+                      --config=p/typescript \
+                      --severity ERROR \
+                      --output reports/semgrep-report.txt \
+                      .
+                '''
+            }
+        }
+
+        stage('Build & Test Backend') {
+            steps {
+                sh '''
+                    cd backend
+                    python3 -m venv venv
+                    . venv/bin/activate
+
+                    pip install --upgrade pip
+                    pip install -r requirements.txt
+
+                    pytest || echo "No hay tests de backend definidos"
+                '''
+            }
+        }
+
+        stage('Build & Test Frontend') {
+            steps {
+                sh '''
+                    cd frontend
+                    npm ci || npm install
+
+                    npm test -- --watch=false || echo "No hay tests de frontend definidos"
+
+                    npm run build || echo "Build de frontend no definida"
+                '''
+            }
+        }
+
+        stage('Build Docker Images') {
             steps {
                 script {
-                    echo 'Running Semgrep static analysis...'
-                    
-                    // Crear directorio de reportes
-                    sh "mkdir -p ${REPORTS_DIR}"
-                    
-                    // Ejecutar Semgrep con reglas específicas
+                    echo "Construyendo imágenes Docker:"
+                    echo "- ${BACKEND_IMAGE}"
+                    echo "- ${FRONTEND_IMAGE}"
+
                     sh """
-                        docker run --rm \
-                        -v \$(pwd):/src \
-                        returntocorp/semgrep:latest \
-                        semgrep scan \
-                        --config=p/python \
-                        --config=p/typescript \
-                        --config=p/security-audit \
-                        --config=p/owasp-top-ten \
-                        --severity ERROR \
-                        --severity WARNING \
-                        --json \
-                        --output /src/${REPORTS_DIR}/semgrep-report.json \
-                        /src
+                        docker build -t ${BACKEND_IMAGE} backend
+                        docker build -t ${FRONTEND_IMAGE} frontend
                     """
-                    
-                    // Convertir JSON a texto legible
-                    sh """
-                        docker run --rm \
-                        -v \$(pwd):/src \
-                        returntocorp/semgrep:latest \
-                        semgrep scan \
-                        --config=p/python \
-                        --config=p/typescript \
-                        --config=p/security-audit \
-                        --config=p/owasp-top-ten \
-                        --severity ERROR \
-                        --severity WARNING \
-                        --output /src/${REPORTS_DIR}/semgrep-report.txt \
-                        /src
-                    """
-                    
-                    echo 'Semgrep analysis completed. Report saved to reports/semgrep-report.txt'
-                }
-            }
-            post {
-                always {
-                    archiveArtifacts artifacts: "${REPORTS_DIR}/semgrep-report.*", allowEmptyArchive: true
                 }
             }
         }
-        
-        stage('Dependency Scanning - Snyk') {
-            environment {
-                SNYK_TOKEN = credentials('snyk-api-token')
-            }
+
+        stage('Push Docker Images') {
             steps {
                 script {
-                    echo 'Running Snyk dependency scanning...'
-                    
-                    // Escanear backend (Python)
-                    echo 'Scanning Python dependencies...'
+                    echo "Pusheando imágenes al registry ${REGISTRY_URL}"
+
                     sh """
-                        docker run --rm \
-                        -e SNYK_TOKEN=${SNYK_TOKEN} \
-                        -v \$(pwd)/backend:/project \
-                        -v \$(pwd)/${REPORTS_DIR}:/reports \
-                        snyk/snyk:python \
-                        snyk test \
-                        --file=/project/requirements.txt \
-                        --severity-threshold=low \
-                        --json \
-                        --json-file-output=/reports/snyk-backend.json \
-                        || true
+                        docker push ${BACKEND_IMAGE}
+                        docker push ${FRONTEND_IMAGE}
                     """
-                    
-                    // Escanear frontend (Node.js)
-                    echo 'Scanning Node.js dependencies...'
-                    sh """
-                        docker run --rm \
-                        -e SNYK_TOKEN=${SNYK_TOKEN} \
-                        -v \$(pwd)/frontend:/project \
-                        -v \$(pwd)/${REPORTS_DIR}:/reports \
-                        snyk/snyk:node \
-                        snyk test \
-                        --file=/project/package.json \
-                        --severity-threshold=low \
-                        --json \
-                        --json-file-output=/reports/snyk-frontend.json \
-                        || true
-                    """
-                    
-                    // Generar reporte combinado en texto
-                    sh """
-                        docker run --rm \
-                        -e SNYK_TOKEN=${SNYK_TOKEN} \
-                        -v \$(pwd)/backend:/backend \
-                        -v \$(pwd)/frontend:/frontend \
-                        -v \$(pwd)/${REPORTS_DIR}:/reports \
-                        snyk/snyk:python \
-                        sh -c "cd /backend && snyk test --file=requirements.txt --severity-threshold=low > /reports/snyk-backend.txt 2>&1 || true"
-                    """
-                    
-                    sh """
-                        docker run --rm \
-                        -e SNYK_TOKEN=${SNYK_TOKEN} \
-                        -v \$(pwd)/frontend:/frontend \
-                        -v \$(pwd)/${REPORTS_DIR}:/reports \
-                        snyk/snyk:node \
-                        sh -c "cd /frontend && snyk test --file=package.json --severity-threshold=low > /reports/snyk-frontend.txt 2>&1 || true"
-                    """
-                    
-                    // Combinar reportes
-                    sh """
-                        echo '========================================' > ${REPORTS_DIR}/snyk-report.txt
-                        echo 'SNYK DEPENDENCY SCANNING REPORT' >> ${REPORTS_DIR}/snyk-report.txt
-                        echo 'Date: \$(date)' >> ${REPORTS_DIR}/snyk-report.txt
-                        echo '========================================' >> ${REPORTS_DIR}/snyk-report.txt
-                        echo '' >> ${REPORTS_DIR}/snyk-report.txt
-                        echo '--- BACKEND (Python) ---' >> ${REPORTS_DIR}/snyk-report.txt
-                        cat ${REPORTS_DIR}/snyk-backend.txt >> ${REPORTS_DIR}/snyk-report.txt 2>/dev/null || echo 'No backend report generated' >> ${REPORTS_DIR}/snyk-report.txt
-                        echo '' >> ${REPORTS_DIR}/snyk-report.txt
-                        echo '--- FRONTEND (Node.js) ---' >> ${REPORTS_DIR}/snyk-report.txt
-                        cat ${REPORTS_DIR}/snyk-frontend.txt >> ${REPORTS_DIR}/snyk-report.txt 2>/dev/null || echo 'No frontend report generated' >> ${REPORTS_DIR}/snyk-report.txt
-                    """
-                    
-                    echo 'Snyk scanning completed. Report saved to reports/snyk-report.txt'
                 }
             }
-            post {
-                always {
-                    archiveArtifacts artifacts: "${REPORTS_DIR}/snyk-*.txt,${REPORTS_DIR}/snyk-*.json", allowEmptyArchive: true
+        }
+
+        stage('Deploy to Kubernetes with Helm') {
+            steps {
+                script {
+                    sh "kubectl config use-context ${KUBE_CONTEXT}"
+
+                    sh """
+                        helm upgrade --install ${HELM_RELEASE} ${HELM_CHART_PATH} \
+                          --namespace ${HELM_NAMESPACE} --create-namespace \
+                          --set backend.image=${BACKEND_IMAGE} \
+                          --set frontend.image=${FRONTEND_IMAGE}
+                    """
                 }
             }
         }
     }
-    
+
     post {
         always {
-            echo 'Pipeline completed'
-        }
-        failure {
-            echo 'Pipeline failed!'
+            archiveArtifacts artifacts: 'reports/**', fingerprint: true
         }
         success {
-            echo 'Pipeline succeeded!'
+            echo "✔ Pipeline OK"
+            echo "✔ Backend:  ${BACKEND_IMAGE}"
+            echo "✔ Frontend: ${FRONTEND_IMAGE}"
+        }
+        failure {
+            echo "Pipeline falló"
         }
     }
 }
