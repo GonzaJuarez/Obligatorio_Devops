@@ -37,6 +37,8 @@ spec:
               subPath: default.conf
             - name: nginx-cache                           # <- NUEVO
               mountPath: /nginx/cache                     # <- donde está fallando
+            - name: nginx-run                             # <- NUEVO para PID
+              mountPath: /nginx/run                       # <- directorio para nginx.pid
           resources:
             {{- toYaml .Values.frontend.resources | nindent 12 }}
       volumes:
@@ -53,4 +55,6 @@ spec:
               - key: default.conf
                 path: default.conf
         - name: nginx-cache                               # <- NUEVO
+          emptyDir: {}                                    # <- writable
+        - name: nginx-run                                 # <- NUEVO para PID
           emptyDir: {}                                    # <- writable

@@ -8,7 +8,7 @@ data:
       listen 80;
       server_name _;
 
-      root /usr/share/nginx/html;
+      root /nginx/var;
       index index.html;
 
       location / {
@@ -16,7 +16,8 @@ data:
       }
 
       location /runtime-config/ {
-        try_files $uri =404;
+        alias /nginx/var/runtime-config/;
+        add_header Cache-Control "no-store";
       }
 
       location ~ ^/api/?(.*)$ {

@@ -45,6 +45,17 @@ spec:
         - name: fix-permissions
           image: busybox:1.36.1
           command: ["sh", "-c", "chown -R 1000:1000 /var/jenkins_home"]
+          securityContext:
+            runAsNonRoot: false
+            runAsUser: 0
+            allowPrivilegeEscalation: false
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "100m"
+              memory: "128Mi"
           volumeMounts:
             - name: jenkins-home
               mountPath: /var/jenkins_home
@@ -60,6 +71,8 @@ spec:
               value: "-Djenkins.install.runSetupWizard=false"
           securityContext:
             allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1000
           resources:
             requests:
               cpu: "250m"

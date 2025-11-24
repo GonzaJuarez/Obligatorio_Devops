@@ -43,6 +43,11 @@ fi
 echo "Usando contexto de minikube..."
 kubectl config use-context "$MINIKUBE_PROFILE"
 
+
+echo "Actualizando imágenes Docker..."
+docker pull registry.konoba.space/burger-back:v2 
+docker pull registry.konoba.space/burger-front:v2
+
 ## KYVERNO ##################################################################
 
 if ! kubectl get ns "${NAMESPACE_KYVERNO}" >/dev/null 2>&1; then
@@ -55,6 +60,14 @@ if ! kubectl get ns "${NAMESPACE_KYVERNO}" >/dev/null 2>&1; then
 fi
 
 kubectl wait --for=condition=Available deployment/kyverno-admission-controller -n "${NAMESPACE_KYVERNO}" --timeout=300s || true
+
+echo "Esperando a que Kyverno esté completamente listo..."
+sleep 30
+
+# Verificar que el webhook esté respondiendo
+echo "Verificando webhook de Kyverno..."
+kubectl get validatingwebhookconfigurations.admissionregistration.k8s.io -A || true
+kubectl get mutatingwebhookconfigurations.admissionregistration.k8s.io -A || true
 
 echo "Desplegando políticas de Kyverno..."
 
@@ -71,14 +84,14 @@ echo "Políticas de Kyverno desplegadas."
 
 echo "Desplegando BurgerClicker con Helm..."
 
-if ! helm install burgerclicker "$CHART_DIR" \
+if ! helm upgrade --install burgerclicker "$CHART_DIR" \
   -n "${NAMESPACE_APP}" \
   --wait \
   --timeout 300s \
   --create-namespace; then
 
   echo
-  echo "❌ Error desplegando burgerclicker (Helm falló)."
+  echo "Error desplegando burgerclicker (Helm falló)."
 
   echo
   echo "=== Pods en namespace ${NAMESPACE_APP} ==="
@@ -120,13 +133,30 @@ if [ ! -f "$GRAFANA_MANIFEST" ]; then
   exit 1
 fi
 
-kubectl apply -f "$PROMETHEUS_MANIFEST"
-kubectl apply -f "$GRAFANA_MANIFEST"
+# Verificar si los archivos tienen contenido
+if [ ! -s "$PROMETHEUS_MANIFEST" ]; then
+  echo "ADVERTENCIA: $PROMETHEUS_MANIFEST está vacío. Saltando despliegue de Prometheus."
+else
+  kubectl apply -f "$PROMETHEUS_MANIFEST" || echo "ADVERTENCIA: Fallo al desplegar Prometheus"
+  kubectl wait --for=condition=Available deployment/prometheus -n "${NAMESPACE_MONITORING}" --timeout=300s || true
+fi
 
-kubectl wait --for=condition=Available deployment/prometheus -n "${NAMESPACE_MONITORING}" --timeout=300s || true
-kubectl wait --for=condition=Available deployment/grafana    -n "${NAMESPACE_MONITORING}" --timeout=300s || true
+if [ ! -s "$GRAFANA_MANIFEST" ]; then
+  echo "ADVERTENCIA: $GRAFANA_MANIFEST está vacío. Saltando despliegue de Grafana."
+else
+  # Crear ConfigMap para dashboard personalizado si existe el archivo
+  if [ -f "${ROOT_DIR}/k8s/monitoring/dashboards/dashboard.json" ]; then
+    echo "Creando ConfigMap para dashboard personalizado..."
+    kubectl create configmap grafana-dashboard-custom \
+      --from-file=dashboard.json="${ROOT_DIR}/k8s/monitoring/dashboards/dashboard.json" \
+      -n "${NAMESPACE_MONITORING}" \
+      --dry-run=client -o yaml | kubectl apply -f -
+  fi
+  
+  kubectl apply -f "$GRAFANA_MANIFEST" || echo "ADVERTENCIA: Fallo al desplegar Grafana"
+  kubectl wait --for=condition=Available deployment/grafana -n "${NAMESPACE_MONITORING}" --timeout=300s || true
+fi
 
-### RESUMEN ################################################################
 
 echo --------------------------------------------------------
 echo "Despliegue completado."
@@ -140,11 +170,27 @@ echo "- Pods en namespace ${NAMESPACE_JENKINS}:"
 kubectl get pods -n "${NAMESPACE_JENKINS}"
 
 echo
-echo "- Para acceder al FRONTEND:"
-echo "    minikube service frontend-svc -n ${NAMESPACE_APP} --url -p ${MINIKUBE_PROFILE}"
+echo "- Pods en namespace ${NAMESPACE_MONITORING}:"
+kubectl get pods -n "${NAMESPACE_MONITORING}"
+
 echo
-echo "- Para acceder a JENKINS:"
-echo "    minikube service jenkins-svc -n ${NAMESPACE_JENKINS} --url -p ${MINIKUBE_PROFILE}"
+echo "=========================================="
+echo "Para acceder a los servicios, ejecuta:"
+echo "=========================================="
 echo
-echo "- Para acceder a GRAFANA:"
-echo "    minikube service grafana -n ${NAMESPACE_MONITORING} --url -p ${MINIKUBE_PROFILE}"
+echo "FRONTEND (en una terminal separada):"
+echo "    minikube service frontend-svc -n ${NAMESPACE_APP} -p ${MINIKUBE_PROFILE}"
+echo
+echo "JENKINS (en otra terminal):"
+echo "    minikube service jenkins-svc -n ${NAMESPACE_JENKINS} -p ${MINIKUBE_PROFILE}"
+echo
+echo "GRAFANA (en otra terminal):"
+echo "    minikube service grafana -n ${NAMESPACE_MONITORING} -p ${MINIKUBE_PROFILE}"
+echo "    Credenciales: admin/admin"
+echo
+echo "O usa port-forward (alternativa):"
+echo "    minikube service frontend-svc -n burgerclicker -p minikube"
+echo "    kubectl port-forward -n ${NAMESPACE_JENKINS} deploy/jenkins 8081:8080"
+echo "    minikube service grafana -n monitoring -p minikube"
+echo
+echo "NOTA: Los túneles de minikube deben mantenerse abiertos en terminales separadas."

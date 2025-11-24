@@ -24,10 +24,19 @@ spec:
           imagePullPolicy: {{ .Values.backend.imagePullPolicy }}
           ports:
             - containerPort: 8000
+          env:
+            - name: ALLOWED_ORIGINS
+              value: "http://localhost:4200,http://localhost:3000,http://127.0.0.1:30080,http://192.168.49.2:30080"
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             runAsNonRoot: true
             runAsUser: 1000
+          volumeMounts:
+            - name: data
+              mountPath: /data
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
+      volumes:
+        - name: data
+          emptyDir: {}

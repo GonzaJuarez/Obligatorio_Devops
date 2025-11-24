@@ -4,12 +4,17 @@ from typing import Dict, List
 import json
 import os
 import re
+from prometheus_client import Counter, Gauge, generate_latest, CONTENT_TYPE_LATEST
+from fastapi.responses import Response
 
 app = FastAPI()
 
-DATA_FILE = "clicks.json"
+DATA_FILE = "/data/clicks.json"
 
-# ---------- Persistencia sencilla en archivo ----------
+total_clicks = Counter('burger_clicks_total', 'Total de clicks en hamburguesas', ['player'])
+active_connections = Gauge('websocket_connections', 'Conexiones WebSocket activas')
+current_scores = Gauge('player_score', 'Score actual de cada jugador', ['player'])
+
 def load_data() -> Dict[str, int]:
     if not os.path.exists(DATA_FILE):
         return {}
@@ -38,17 +43,24 @@ class ConnectionManager:
 
     async def connect(self, websocket: WebSocket, origin: str = None):
         allowed_origins = os.getenv('ALLOWED_ORIGINS', 'http://localhost:4200,http://localhost:3000').split(',')
-        if origin and origin not in allowed_origins:
-            await websocket.close(code=1008, reason="Origin not allowed")
-            return False
+        
+        # Permitir cualquier origen localhost/127.0.0.1 en desarrollo
+        if origin:
+            from urllib.parse import urlparse
+            parsed = urlparse(origin)
+            if parsed.hostname not in ['localhost', '127.0.0.1', '192.168.49.2'] and origin not in allowed_origins:
+                await websocket.close(code=1008, reason="Origin not allowed")
+                return False
         
         await websocket.accept()
         self.active_connections.append(websocket)
+        active_connections.set(len(self.active_connections))
         return True
 
     def disconnect(self, websocket: WebSocket):
         if websocket in self.active_connections:
             self.active_connections.remove(websocket)
+        active_connections.set(len(self.active_connections))
 
     async def broadcast_text(self, message: str):
         dead: List[WebSocket] = []
@@ -104,6 +116,9 @@ async def websocket_endpoint(websocket: WebSocket):
                 scores[name] = total
                 save_data(scores)
 
+                total_clicks.labels(player=name).inc()
+                current_scores.labels(player=name).set(total)
+
                 await manager.broadcast_text(msg_click(name, total))
                 await manager.broadcast_text(msg_scores(scores))
 
@@ -115,3 +130,8 @@ async def websocket_endpoint(websocket: WebSocket):
 async def reset_scores():
     save_data({})
     return {"status": "scores reset"}
+
+@app.get("/metrics")
+async def metrics():
+    """Endpoint para Prometheus"""
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)

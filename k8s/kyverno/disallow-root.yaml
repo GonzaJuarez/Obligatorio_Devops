@@ -17,6 +17,24 @@ spec:
                 - DaemonSet
                 - Job
                 - CronJob
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kyverno
+              kinds:
+                - Pod
+                - Deployment
+          - resources:
+              namespaces:
+                - jenkins
+              kinds:
+                - Pod
+                - Deployment
+              selector:
+                matchLabels:
+                  app: jenkins
       validate:
         message: "Los contenedores deben correr como non-root (runAsNonRoot: true y UID > 0)."
         pattern:
