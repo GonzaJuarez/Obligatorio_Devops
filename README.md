@@ -1,7 +1,7 @@
 # Laboratorio 4 – Trabajo integrador
 ---
 
-## 1. Descripción general  
+## 1. Descripción del proyecto elegido  
 Se tomó el proyecto BurgerClicker y se automatizó todo el ciclo DevOps / DevSecOps: contenerización, despliegue con Helm, pipeline CI/CD con Jenkins, políticas de seguridad con Kyverno y monitoreo con Prometheus + Grafana.  
 Todo corre sobre Minikube mediante un script único que inicializa dependencias, instala operadores, despliega la aplicación y activa la observabilidad.
 
