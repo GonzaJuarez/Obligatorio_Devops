@@ -1,5 +1,5 @@
 # Laboratorio 4 – Trabajo integrador
----
+
 
 ## 1. Descripción del proyecto elegido  
 Se tomó el proyecto BurgerClicker y se automatizó todo el ciclo DevOps / DevSecOps: contenerización, despliegue con Helm, pipeline CI/CD con Jenkins, políticas de seguridad con Kyverno y monitoreo con Prometheus + Grafana.  
@@ -132,7 +132,7 @@ Políticas aplicadas:
 - Dashboard contiene:
   - RPS  
   - Latencia promedio  
-  - CPU/memoria por pod  
+  - CPU / memoria por pod  
   - Métrica de negocio  
 - El dashboard JSON está exportado dentro del repositorio.
 
