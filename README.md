@@ -43,11 +43,21 @@ La arquitectura incluye:
 - Actualiza imágenes del proyecto desde el registry.
 
 ### 4.3 Instalación de Kyverno  
-- Crea namespace.  
-- Instala Kyverno vía Helm.  
-- Espera readiness.  
-- Verifica webhooks.  
-- Aplica todas las políticas almacenadas en `k8s/kyverno/`.
+- Verifica si el namespace `kyverno` existe.
+- Si no existe:
+  - Crea el namespace.
+  - Añade el repositorio oficial de Kyverno Helm: `helm repo add kyverno https://kyverno.github.io/kyverno/`
+  - Actualiza los repositorios: `helm repo update`
+  - Instala Kyverno usando Helm: `helm install kyverno kyverno/kyverno -n kyverno --create-namespace`
+- Espera que el deployment `kyverno-admission-controller` esté disponible (timeout: 300s).
+- Pausa 30 segundos adicionales para asegurar que los webhooks estén completamente listos.
+- Verifica la configuración de webhooks (`validatingwebhookconfigurations` y `mutatingwebhookconfigurations`).
+- Aplica todas las políticas almacenadas en `k8s/kyverno/` usando `kubectl apply -f`.
+
+**Políticas desplegadas:**
+- `disallow-latest-tag`: Prohibe imágenes sin etiqueta de versión específica.
+- `disallow-root-user`: Impide contenedores ejecutándose como root.
+- `require-container-resources`: Exige límites y requests de CPU/memoria.
 
 ### 4.4 Despliegue de la aplicación  
 - Ejecuta `helm upgrade --install` sobre BurgerClicker.  
@@ -77,7 +87,6 @@ El Jenkinsfile implementa:
 
 - Clonación del repositorio.  
 - Semgrep para análisis estático.  
-- Snyk para dependencias.  
 - Build y test.  
 - Build y push de imagen Docker.  
 - Despliegue automático via Helm.  
@@ -89,22 +98,61 @@ El pipeline se detiene ante vulnerabilidades críticas.
 ## 6. Seguridad integrada
 
 ### 6.1 Semgrep  
-Análisis estático. Resultados almacenados en `/reports/semgrep-report.txt`.
+Análisis estático de código para detectar vulnerabilidades y malas prácticas. Resultados almacenados en `/reports/semgrep-report.txt`.
+
+Comando ejecutado:
+```bash
+# Análisis con configuraciones personalizadas y estándar de Python, TypeScript y Security Audit
+docker run --rm -v ${PWD}:/src returntocorp/semgrep:latest semgrep scan \
+  --config=/src/.semgrep.yml \
+  --config=p/python \
+  --config=p/typescript \
+  --config=p/security-audit \
+  --severity ERROR \
+  --severity WARNING \
+  --text \
+  --output /src/reports/semgrep-report.txt \
+  /src
+```
 
 ### 6.2 Snyk  
-Escaneo de dependencias tanto del frontend como del backend. Reportes en `/reports/snyk-frontend-scan.txt` y `/reports/snyk-backend-scan.txt`.
+Escaneo de vulnerabilidades en dependencias de terceros. Reportes en `/reports/snyk-frontend-scan.txt` y `/reports/snyk-backend-scan.txt`.
 
-### 6.3 Kyverno  
+Comandos ejecutados:
+```bash
+# Backend (Python)
+docker run --rm -v ${PWD}:/project -w /project snyk/snyk:python sh -c \
+  "pip3 install -r backend/requirements.txt && snyk test --file=backend/requirements.txt --severity-threshold=low" \
+  2>&1 | tee reports/snyk-backend-scan.txt
+
+# Frontend (Node.js)
+docker run --rm -v ${PWD}:/project -w /project snyk/snyk:node sh -c \
+  "npm install && snyk test --severity-threshold=low" \
+  2>&1 | tee reports/snyk-frontend-scan.txt
+```
+
+### 6.3 Trivy
+Escaneo de vulnerabilidades en imágenes de contenedores. Trivy analiza las capas de la imagen Docker y detecta CVEs conocidas en el sistema operativo base, bibliotecas del sistema y dependencias de aplicación.
+
+Reportes generados en `/reports/backend-trivy.txt` y `/reports/frontend-trivy.txt`.
+
+Comandos ejecutados:
+```bash
+docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image burger-back:v2 > reports/backend-trivy.txt --format table
+docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image burger-front:v2 > reports/frontend-trivy.txt --format table
+```
+
+### 6.4 Kyverno  
 Políticas aplicadas:
 
-#### 6.3.1 `disallow-latest-tag`
+#### 6.4.1 `disallow-latest-tag`
 - **Propósito**: Prohibir el uso de la etiqueta `:latest` en imágenes Docker.
 - **Severidad**: Media
 - **Modo**: Audit
 - **Descripción**: La etiqueta `:latest` es mutable y puede causar inconsistencias o fallos graves de seguridad si la imagen cambia. Esta política valida que todas las imágenes especifiquen una etiqueta explícita y que no sea `latest`.
 - **Archivo**: `k8s/kyverno/disallow-latest.yaml`
 
-#### 6.3.2 `disallow-root-user`
+#### 6.4.2 `disallow-root-user`
 - **Propósito**: Impedir la ejecución de contenedores como usuario root (UID 0).
 - **Severidad**: Alta
 - **Modo**: Enforce
@@ -112,7 +160,7 @@ Políticas aplicadas:
 - **Exclusiones**: Namespaces `kube-system`, `kyverno` y pods de Jenkins con initContainers que requieren permisos especiales.
 - **Archivo**: `k8s/kyverno/disallow-root.yaml`
 
-#### 6.3.3 `require-container-resources`
+#### 6.4.3 `require-container-resources`
 - **Propósito**: Exigir límites y requests de CPU y memoria en todos los contenedores.
 - **Severidad**: Alta
 - **Modo**: Enforce
