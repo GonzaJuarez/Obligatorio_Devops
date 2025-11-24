@@ -1,253 +1,166 @@
-# 🍔 Burger Clicker - Obligatorio DevOps
+# Laboratorio 4 – Trabajo integrador
+---
 
-## 📋 Proyecto
-
-Aplicación web de clicker game con backend FastAPI (Python) y frontend Angular (TypeScript).
+## 1. Descripción general  
+Se tomó el proyecto BurgerClicker y se automatizó todo el ciclo DevOps / DevSecOps: contenerización, despliegue con Helm, pipeline CI/CD con Jenkins, políticas de seguridad con Kyverno y monitoreo con Prometheus + Grafana.  
+Todo corre sobre Minikube mediante un script único que inicializa dependencias, instala operadores, despliega la aplicación y activa la observabilidad.
 
 ---
 
-## 🔒 5.1 Análisis Estático de Código (Semgrep) - COMPLETADO ✅
+## 2. Arquitectura final  
+**Componentes principales:**
 
-### Resumen Ejecutivo
+- **Aplicación BurgerClicker** (backend + frontend) desplegada con Helm en `burgerclicker`.
+- **Jenkins** en el namespace `jenkins` para CI/CD.
+- **Kyverno** en `kyverno`, actuando como admission controller.
+- **Prometheus + Grafana** en `monitoring` para métricas y visualización.
+- **Minikube** como entorno Kubernetes local.
 
-Se implementó con éxito el análisis estático de código utilizando **Semgrep** con las siguientes características:
+La arquitectura incluye:
+- Pods de frontend y backend.
+- Ingreso a servicios mediante `minikube service`.
+- Dashboard personalizado montado automáticamente en Grafana.
+- Webhooks de Kyverno aplicando políticas de seguridad.
 
-#### ✅ Requisitos Completados
+---
 
-- ✅ **Semgrep ejecutado** sobre todo el código fuente (Python + TypeScript)
-- ✅ **8 reglas personalizadas** de seguridad específicas implementadas
-- ✅ **Rulesets estándar** aplicados: `p/python`, `p/typescript`, `p/security-audit`
-- ✅ **Reporte guardado** en `/reports/semgrep-report.txt`
-- ✅ **Vulnerabilidades analizadas**: 11 hallazgos detectados
-  - 4 vulnerabilidades **corregidas** con código mejorado
-  - 5 hallazgos **justificados** técnicamente
-  - 2 falsos positivos identificados
+## 3. Contenerización  
+- Imágenes con etiquetas de versión fija, sin usuario root, optimizadas con multi-stage.
+- Se ejecutaron Snyk/Trivy para vulnerabilidades.
+- El script realiza `docker pull` de las imágenes actualizadas antes del despliegue.
 
-#### 📊 Métricas del Análisis
+---
 
-| Métrica | Valor |
-|---------|-------|
-| Archivos escaneados | 22 |
-| Reglas ejecutadas | 306 |
-| Hallazgos totales | 11 |
-| Vulnerabilidades críticas | 1 (corregida) |
-| Lenguajes analizados | Python, TypeScript, JavaScript |
+## 4. Automatización del despliegue (`start.sh`)
 
-#### 🛡️ Reglas de Seguridad Implementadas
+### 4.1 Validación del entorno  
+- Verifica presencia de `minikube`, `kubectl`, `helm`.  
+- Verifica existencia de chart, manifests y directorios necesarios.
 
-**Python (Backend):**
-1. `python-unsafe-json-loads` - Deserialización insegura (CWE-502)
-2. `python-path-traversal` - Path traversal (CWE-22)
-3. `python-websocket-no-origin-check` - Validación de origen WebSocket (CWE-346) ⚠️ CRÍTICO
-4. `python-websocket-input-validation` - Validación de entrada (CWE-20)
+### 4.2 Inicialización de Minikube  
+- Arranca el cluster si no existe.  
+- Configura el contexto.  
+- Actualiza imágenes del proyecto desde el registry.
 
-**TypeScript (Frontend):**
-5. `typescript-innerhtml-xss` - Cross-Site Scripting (CWE-79)
-6. `typescript-dangerous-eval` - Ejecución de código arbitrario (CWE-95)
-7. `typescript-localstorage-no-validation` - Deserialización insegura (CWE-502)
-8. `typescript-websocket-error-handling` - Manejo de errores (CWE-755)
+### 4.3 Instalación de Kyverno  
+- Crea namespace.  
+- Instala Kyverno vía Helm.  
+- Espera readiness.  
+- Verifica webhooks.  
+- Aplica todas las políticas almacenadas en `k8s/kyverno/`.
 
-#### 🔧 Correcciones Implementadas
+### 4.4 Despliegue de la aplicación  
+- Ejecuta `helm upgrade --install` sobre BurgerClicker.  
+- Espera readiness del frontend y backend.  
+- Si falla, imprime logs, eventos y diagnóstico automático.
 
-**1. Validación de Origen WebSocket (CRÍTICO)**
-```python
-# ✅ Ahora valida el origen antes de aceptar conexiones
-async def connect(self, websocket: WebSocket, origin: str = None):
-    allowed_origins = os.getenv('ALLOWED_ORIGINS', '...').split(',')
-    if origin and origin not in allowed_origins:
-        await websocket.close(code=1008, reason="Origin not allowed")
-        return False
-    await websocket.accept()
-```
+### 4.5 Jenkins  
+- Crea namespace.  
+- Aplica manifiesto propio.  
+- Espera readiness.
 
-**2. Validación de Estructura JSON**
-```python
-# ✅ Valida que sea dict con tipos correctos
-if not isinstance(data, dict):
-    return {}
-if not all(isinstance(k, str) and isinstance(v, int) for k, v in data.items()):
-    return {}
-```
+### 4.6 Prometheus + Grafana  
+- Aplica manifest de Prometheus.  
+- Aplica manifest de Grafana.  
+- Si existe un dashboard JSON, lo convierte en ConfigMap y lo monta automáticamente.  
+- Espera readiness de ambos.
 
-**3. Sanitización de Inputs**
-```python
-# ✅ Valida longitud y caracteres permitidos
-if not name or len(name) > 50:
-    continue
-if not re.match(r'^[a-zA-Z0-9\s\-_]+$', name):
-    continue
-```
+### 4.7 Output final del script  
+Imprime:
+- Pods por namespace.  
+- Comandos para acceder a frontend, Jenkins y Grafana mediante `minikube service`.
 
-**4. Validación de Mensajes WebSocket**
-```python
-# ✅ Valida estructura antes de procesar
-if not isinstance(data, dict) or 'type' not in data:
-    continue
-```
+---
 
-#### 📂 Documentación Generada
+## 5. Pipeline CI/CD  
+El Jenkinsfile implementa:
 
-- `reports/semgrep-report.txt` - Reporte principal de Semgrep
-- `reports/ANALISIS_VULNERABILIDADES.md` - Análisis detallado de cada vulnerabilidad
-- `reports/README_SEMGREP.md` - Guía completa de uso y configuración
-- `.semgrep.yml` - Reglas personalizadas de seguridad
-- `Jenkinsfile` - Stage de Semgrep integrado en CI/CD
+- Clonación del repositorio.  
+- Semgrep para análisis estático.  
+- Snyk para dependencias.  
+- Build y test.  
+- Build y push de imagen Docker.  
+- Despliegue automático via Helm.  
 
-#### 🚀 Ejecución Rápida
+El pipeline se detiene ante vulnerabilidades críticas.
 
-```bash
-# Con Docker (Recomendado)
-docker run --rm -v ${PWD}:/src returntocorp/semgrep:latest semgrep scan \
-  --config=/src/.semgrep.yml \
-  --config=p/python \
-  --config=p/typescript \
-  --severity ERROR \
-  --severity WARNING \
-  --output /src/reports/semgrep-report.txt \
-  /src
-```
+---
 
-#### 📈 Nivel de Seguridad
+## 6. Seguridad integrada
 
-**Antes:** 🔴 Vulnerable (sin validaciones)  
-**Después:** 🟢 Mejorado (validaciones implementadas)
+### 6.1 Semgrep  
+Análisis estático. Resultados almacenados en `/reports/semgrep-report.txt`.
 
-**Mejoras implementadas:**
-- ✅ Validación CORS para WebSocket
-- ✅ Sanitización de inputs con regex
-- ✅ Validación de estructura JSON
-- ✅ Límites de longitud en datos de usuario
-- ✅ Manejo robusto de errores
+### 6.2 Snyk  
+Escaneo de dependencias tanto del frontend como del backend. Reportes en `/reports/snyk-frontend-scan.txt` y `/reports/snyk-backend-scan.txt`.
+
+### 6.3 Kyverno  
+Políticas aplicadas:
+
+#### 6.3.1 `disallow-latest-tag`
+- **Propósito**: Prohibir el uso de la etiqueta `:latest` en imágenes Docker.
+- **Severidad**: Media
+- **Modo**: Audit
+- **Descripción**: La etiqueta `:latest` es mutable y puede causar inconsistencias o fallos graves de seguridad si la imagen cambia. Esta política valida que todas las imágenes especifiquen una etiqueta explícita y que no sea `latest`.
+- **Archivo**: `k8s/kyverno/disallow-latest.yaml`
+
+#### 6.3.2 `disallow-root-user`
+- **Propósito**: Impedir la ejecución de contenedores como usuario root (UID 0).
+- **Severidad**: Alta
+- **Modo**: Enforce
+- **Descripción**: Ejecutar contenedores como root incrementa el riesgo de escalación de privilegios. Esta política exige `runAsNonRoot: true` y `runAsUser > 0` tanto a nivel de pod como de contenedor.
+- **Exclusiones**: Namespaces `kube-system`, `kyverno` y pods de Jenkins con initContainers que requieren permisos especiales.
+- **Archivo**: `k8s/kyverno/disallow-root.yaml`
+
+#### 6.3.3 `require-container-resources`
+- **Propósito**: Exigir límites y requests de CPU y memoria en todos los contenedores.
+- **Severidad**: Alta
+- **Modo**: Enforce
+- **Descripción**: Los límites de recursos previenen el consumo descontrolado y el "noisy neighbor". Esta política valida que cada contenedor tenga definidos `requests` y `limits` para CPU y memoria.
+- **Archivo**: `k8s/kyverno/require-resources.yaml`
+
+**Funcionamiento:**
+- Las políticas se aplican automáticamente mediante el script `start.sh` después de instalar Kyverno.
+- Kyverno actúa como admission controller, validando y rechazando recursos que incumplan.
+- Las políticas en modo `Enforce` bloquean el despliegue; en modo `Audit` solo registran violaciones.
+
+---
+
+## 7. Monitoreo y Observabilidad  
+- Prometheus scrapea métricas de la aplicación.  
+- Grafana se conecta a Prometheus.  
+- Dashboard contiene:
+  - RPS  
+  - Latencia promedio  
+  - CPU/memoria por pod  
+  - Métrica de negocio  
+- El dashboard JSON está exportado dentro del repositorio.
+
+---
+
+## 8. Scripts del laboratorio  
+El proyecto incluye un script (`start.sh`) para:
+- Inicializar infraestructura.  
+- Instalar operadores.  
+- Popular dashboards generando tráfico.  
+
+Y otro script (`shutdown.sh`) para finalizar su ejecución, gracias a esto no queda ningún componente activo del laboratorio, garantizando así una reversión completa del entorno.
 
 
 ---
 
-## 🔍 5.2 Escaneo de Dependencias (Snyk) - COMPLETADO ✅
+## 9. Problemas y soluciones
 
-### Resumen Ejecutivo
-
-Se implementó con éxito el escaneo de dependencias utilizando **Snyk** con las siguientes características:
-
-#### ✅ Requisitos Completados
-
-- ✅ **Snyk ejecutado** sobre todas las dependencias del proyecto
-- ✅ **Reporte guardado** en `/reports/snyk-report.txt`
-- ✅ **Vulnerabilidades críticas identificadas**: 5 vulnerabilidades encontradas
-  - 1 CRÍTICA (XSS en three.js)
-  - 2 ALTAS (DoS en FastAPI, ReDoS en troika-three-text)
-  - 2 MEDIAS (HTTP Smuggling en uvicorn, Resource allocation)
-- ✅ **Correcciones propuestas** con comandos específicos
-
-#### 📊 Métricas del Escaneo
-
-| Métrica | Valor |
-|---------|-------|
-| Dependencias escaneadas | 39 |
-| Backend (Python) | 4 paquetes |
-| Frontend (Node.js) | 35 paquetes |
-| Vulnerabilidades encontradas | 5 |
-| Nivel de riesgo | ALTO (7.5/10) |
-
-#### 🚨 Vulnerabilidades Críticas Detectadas
-
-**1. [CRÍTICA] XSS en Three.js**
-- **Paquete:** `three@0.171.0`
-- **CVE:** Pendiente
-- **CVSS:** 9.6
-- **Descripción:** Vulnerabilidad de Cross-Site Scripting en módulo de carga OBJ/MTL
-- **Corrección:** `npm install three@latest` (actualizar a 0.172.0+)
-
-**2. [ALTA] DoS en FastAPI**
-- **Paquete:** `fastapi@0.109.1`  
-- **CVE:** SNYK-PYTHON-FASTAPI-6223296
-- **CVSS:** 7.5
-- **Descripción:** Denial of Service por requests multipart grandes
-- **Corrección:** `pip install --upgrade "fastapi>=0.110.1"`
-
-**3. [ALTA] ReDoS en troika-three-text**
-- **Paquete:** `troika-three-text@0.52.3`
-- **CVSS:** 7.5
-- **Descripción:** Regular Expression Denial of Service
-- **Corrección:** `npm install troika-three-text@latest`
-
-**4. [MEDIA] HTTP Request Smuggling en Uvicorn**
-- **Paquete:** `uvicorn@0.27.0`
-- **CVSS:** 5.3
-- **Descripción:** Manejo inconsistente de headers HTTP
-- **Corrección:** `pip install --upgrade "uvicorn>=0.28.0"`
-
-**5. [MEDIA] Allocation sin límites en python-multipart**
-- **Paquete:** `python-multipart@0.0.19`
-- **CVSS:** 5.5
-- **Descripción:** Sin límites en tamaño de archivos
-- **Corrección:** `pip install --upgrade "python-multipart>=0.0.20"`
-
-#### 🔧 Plan de Corrección
-
-**Backend (requirements.txt actualizado):**
-```txt
-fastapi>=0.110.1      # ← Actualizado desde 0.109.1
-uvicorn>=0.28.0       # ← Actualizado desde 0.27.0
-websockets>=12.0      # ✓ Sin vulnerabilidades
-python-multipart>=0.0.20  # ← Actualizado desde 0.0.19
-```
-
-**Frontend (package.json - cambios):**
-```json
-{
-  "dependencies": {
-    "three": "^0.172.0",  // ← Actualizado desde 0.171.0
-    "troika-three-text": "^0.53.0"  // ← Actualizado desde 0.52.3
-  }
-}
-```
-
-#### 📈 Impacto de las Correcciones
-
-**Antes de actualizar:**
-- Riesgo general: 7.5/10 (ALTO)
-- Vulnerabilidades críticas: 1
-- Tiempo estimado de explotación: < 1 día
-
-**Después de actualizar:**
-- Riesgo general: 9.5/10 (BAJO)
-- Vulnerabilidades críticas: 0
-- Reducción de riesgo: 73%
-
-#### 🚀 Ejecución Rápida
-
-```bash
-# Backend
-cd backend
-pip install --upgrade -r requirements.txt
-
-# Frontend  
-cd frontend
-npm install three@latest troika-three-text@latest
-
-# Re-escanear
-docker run --rm -v ${PWD}:/project snyk/snyk:python snyk test
-```
-
-#### 📂 Documentación Generada
-
-- `reports/snyk-report.txt` - Reporte completo con todas las vulnerabilidades
-- `Jenkinsfile` - Stage de Snyk integrado en CI/CD
+- Webhook de Kyverno lento → se agregó espera adicional.  
+- Helm fallaba por pods no listos → se añadieron diagnósticos automáticos.  
+- Dashboard no se cargaba → se generó ConfigMap automático.  
+- Manifests vacíos → el script detecta archivos sin contenido.
 
 ---
 
-## 📝 Notas Generales
+## 10. Conclusiones  
+- Todo el ciclo DevOps/DevSecOps quedó integrado y automatizado.  
+- Se cumplió con monitoreo, seguridad, CI/CD y despliegue GitOps.  
+- Posibles mejoras: agregar dashboards adicionales en grafana e implementación de Falco (no se hizo por problemas en la implementación, tanto en windows como en linux).
 
-### 5.1 Semgrep
-- Las vulnerabilidades críticas fueron corregidas
-- Los falsos positivos fueron identificados y justificados
-- El código ahora cumple con estándares OWASP Top 10 2021
-- Semgrep integrado en pipeline Jenkins para análisis continuo
-
-### 5.2 Snyk
-- 5 vulnerabilidades de dependencias identificadas
-- Plan de corrección documentado con comandos específicos
-- Reducción de riesgo del 73% tras aplicar actualizaciones
-- Snyk integrado en pipeline Jenkins para escaneo continuo
-
-**Estado:** ✅ **5.1 y 5.2 COMPLETADOS** - Listo para revisión
+---
