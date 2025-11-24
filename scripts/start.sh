@@ -187,10 +187,3 @@ echo
 echo "GRAFANA (en otra terminal):"
 echo "    minikube service grafana -n ${NAMESPACE_MONITORING} -p ${MINIKUBE_PROFILE}"
 echo "    Credenciales: admin/admin"
-echo
-echo "O usa port-forward (alternativa):"
-echo "    minikube service frontend-svc -n burgerclicker -p minikube"
-echo "    kubectl port-forward -n ${NAMESPACE_JENKINS} deploy/jenkins 8081:8080"
-echo "    minikube service grafana -n monitoring -p minikube"
-echo
-echo "NOTA: Los túneles de minikube deben mantenerse abiertos en terminales separadas."

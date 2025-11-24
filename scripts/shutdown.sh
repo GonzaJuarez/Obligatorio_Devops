@@ -103,7 +103,7 @@ kubectl delete mutatingwebhookconfigurations.admissionregistration.k8s.io -l app
 
 echo ""
 echo "========================================="
-echo "Limpieza completada ✓"
+echo "Limpieza completada"
 echo "========================================="
 echo ""
 echo "Todos los componentes eliminados:"
